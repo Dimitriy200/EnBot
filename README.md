@@ -32,3 +32,5 @@ flowchart LR
     Telegram --> Bot --> Server --> DataBase
     DataBase --> Server --> Bot --> Telegram
 ```
+
+![[Pasted image 20240806171539.png]]
