@@ -19,3 +19,16 @@ Cоздать систему, позволяющую выучить иностр
 - JUnit для тестирования.
 - PostgreSQL / Hibernate.
 - CI/CD для непрерывного развертывания.
+
+### Общая диаграмма
+
+```mehrmaid
+flowchart LR
+	Telegram["Telegram"]
+    Bot["Bot"]
+    Server["Server"]
+    DataBase["DataBase"]
+
+    Telegram --> Bot --> Server --> DataBase
+    DataBase --> Server --> Bot --> Telegram
+```
