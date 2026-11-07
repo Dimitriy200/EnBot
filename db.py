@@ -61,12 +61,21 @@ async def due_words(chat_id):   # слова, срок повторения ко
             (chat_id, date.today().isoformat()))
         return await cur.fetchall()
 
-async def review_result(chat_id, word_id, ok: bool):
+async def review_result(chat_id, word_id, ok: bool, grade: int | None = None):
+    """grade: 1=forgot, 2=bad, 3=good, 4=great. Если grade=None — старое поведение по ok."""
     async with aiosqlite.connect(DB_PATH) as con:
         cur = await con.execute(
             "SELECT box FROM user_words WHERE chat_id=? AND word_id=?", (chat_id, word_id))
         row = await cur.fetchone()
-        box = (min(row[0] + 1, 5) if ok else 1) if row else 1
+        prev_box = row[0] if row else 1
+        if grade is None:
+            box = min(prev_box + 1, 5) if ok else 1
+        elif grade >= 4:
+            box = min(prev_box + 1, 5)
+        elif grade == 3:
+            box = prev_box
+        else:
+            box = max(prev_box - 1, 1) if grade == 2 else 1
         next_rev = (date.today() + timedelta(days=BOX_DAYS[box])).isoformat()
         await con.execute("""
             INSERT INTO user_words (chat_id, word_id, box, next_review) VALUES (?,?,?,?)
@@ -79,6 +88,28 @@ async def all_users():
     async with aiosqlite.connect(DB_PATH) as con:
         con.row_factory = aiosqlite.Row
         return await (await con.execute("SELECT * FROM users")).fetchall()
+
+async def forget_word(chat_id, word_id):
+    """Удаляет слово из личного списка пользователя."""
+    async with aiosqlite.connect(DB_PATH) as con:
+        await con.execute(
+            "DELETE FROM user_words WHERE chat_id=? AND word_id=?", (chat_id, word_id))
+        await con.commit()
+
+async def stats(chat_id):
+    async with aiosqlite.connect(DB_PATH) as con:
+        con.row_factory = aiosqlite.Row
+        cur = await con.execute("""
+            SELECT COUNT(*)                                   AS total,
+                   SUM(CASE WHEN uw.next_review <= ? THEN 1 ELSE 0 END) AS due_today
+            FROM user_words uw WHERE uw.chat_id = ?""",
+            (date.today().isoformat(), chat_id))
+        row = await cur.fetchone()
+        cur2 = await con.execute("""
+            SELECT COUNT(DISTINCT box) AS boxes FROM user_words WHERE chat_id=?""", (chat_id,))
+        boxes = (await cur2.fetchone())[0]
+        return {"total": row["total"] or 0, "due_today": row["due_today"] or 0,
+                "mature_boxes": boxes}
 
 async def set_last_remind(chat_id, day):
     async with aiosqlite.connect(DB_PATH) as con:

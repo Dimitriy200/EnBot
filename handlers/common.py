@@ -21,7 +21,16 @@ async def start_add_word(message: Message, state):
 @router.message(CommandStart())
 async def on_start(msg: Message):
     await db.add_user_if_missing(msg.from_user.id)   # + стартовый набор слов через db.learn_word
-    await msg.answer("Привет! Напиши «начать» или выбери режим:", reply_markup=session_kb())
+    await msg.answer("Привет! Напиши «начать» или выбери режим:\n"
+                     "/app — открыть приложение с карточками 📱", reply_markup=session_kb())
+
+@router.message(Command("app"))
+async def app_cmd(msg: Message):
+    from keyboards import MINI_APP_URL
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+    await msg.answer("Открой приложение:", reply_markup=InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть Mini App", web_app=WebAppInfo(url=MINI_APP_URL))]]
+    ))
 
 @router.callback_query(F.data.startswith("session:"))
 async def session_choice(cq: CallbackQuery, state):

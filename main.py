@@ -18,6 +18,16 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv()
 TOKEN=os.getenv("TOKEN")
 
+async def setup_bot_commands(bot):
+    from aiogram.types import BotCommand, BotCommandScopeDefault
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Начать"),
+        BotCommand(command="app", description="Открыть Mini App 📱"),
+        BotCommand(command="cards", description="Карточки в чате"),
+        BotCommand(command="add", description="Добавить слово"),
+        BotCommand(command="chat", description="Диалог на английском"),
+    ], scope=BotCommandScopeDefault())
+
 async def main():
     await db.init()
     bot = Bot(TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -32,6 +42,7 @@ async def main():
     scheduler = setup_scheduler(bot)
     scheduler.start()
     try:
+        await setup_bot_commands(bot)
         await dp.start_polling(bot)
     finally:
         scheduler.shutdown()
