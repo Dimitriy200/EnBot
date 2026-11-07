@@ -1,4 +1,9 @@
-aiogram
+aiogram>=3.13
+aiosqlite
+apscheduler
 dotenv
+python-dotenv
+fastapi
+uvicorn[standard]
 asyncpg
 redis
