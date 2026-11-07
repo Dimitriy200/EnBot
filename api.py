@@ -7,10 +7,12 @@
 import hmac
 import json
 import os
+from pathlib import Path
 from urllib.parse import parse_qsl
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import db
@@ -25,6 +27,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------- раздача собранного Mini App (webapp/dist) ----------
+# Запуск: uvicorn api:app --port 8000
+#   http://<host>:8000/            -> фронтенд (index.html + assets)
+#   http://<host>:8000/api/...     -> REST API (тот же порт, CORS не нужен)
+# ВАЖНО: монтируем ПОСЛЕ объявления всех /api/* маршрутов, иначе catch-all "/"
+# перехватит запросы к API.
+DIST = Path(__file__).parent / "webapp" / "dist"
 
 
 # ---------- initData auth ----------
@@ -128,3 +138,8 @@ async def delete_word(request: Request, word_id: int):
         return {"ok": False, "error": "unauthorized"}
     await db.forget_word(uid, word_id)
     return {"ok": True}
+
+
+# Mount в конце: / -> webapp/dist (статика фронтенда), /api/* уже зарегистрированы
+if DIST.exists():
+    app.mount("/", StaticFiles(directory=DIST, html=True), name="webapp")
