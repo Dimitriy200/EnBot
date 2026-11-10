@@ -99,6 +99,74 @@ HTTPS из коробки. Тогда в `webapp/src/telegram.ts` укажите
 После любого варианта: BotFather → Your bot → Bot Settings → Menu Button →
 `https://your.domain.com/` — и кнопка «Открыть приложение» появится в чате.
 
+### Запуск на Windows (PowerShell)
+
+**1. Установка зависимостей (один раз)**
+```powershell
+# Python 3.10+ с python.org (при установке отметить "Add python.exe to PATH")
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1        # если скрипты заблокированы:
+# Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+pip install -r requirements.txt
+
+# Node.js LTS с nodejs.org (даёт npm)
+cd webapp
+npm install
+cd ..
+```
+
+**2. Настройка `.env`** (в корне проекта, рядом с main.py):
+```
+TOKEN=123456:AAA...                  # токен бота из @BotFather
+BOT_SECRET_KEY=...                   # BotFather → /webapps → Secret Key (можно пустым для dev)
+MINI_APP_URL=https://xxxx.trycloudflare.com
+```
+
+**3. Сборка фронтенда**
+```powershell
+cd webapp
+npm run build                        # -> webapp/dist
+cd ..
+```
+
+**4. Быстрый способ (туннель cloudflared — HTTPS без сервера)**
+```powershell
+# Скачать cloudflared-windows-amd64.exe с https://github.com/cloudflare/cloudflared/releases
+# и положить, например, в C:\tools\cloudflared.exe (или добавить папку в PATH)
+
+# Терминал 1 — API + фронт одним процессом (api.py сам раздаёт webapp/dist):
+.\.venv\Scripts\Activate.ps1
+uvicorn api:app --host 127.0.0.1 --port 8000
+
+# Терминал 2 — туннель:
+C:\tools\cloudflared.exe tunnel --url http://localhost:8000
+# в логе появится https://xxxx-random-words.trycloudflare.com — это и есть ваш HTTPS-URL
+```
+Этот URL укажите в BotFather (Menu Button → Set Web App URL) и в `.env` (`MINI_APP_URL`),
+после чего перезапустите бота: `python main.py`.
+
+**5. Продакшен-вариант на Windows без Linux**
+Вместо Nginx/certbot можно взять любой PaaS с TLS из коробки:
+- FastAPI деплоится на **Railway / Render / Fly.io** (там же будет раздаваться `webapp/dist`, см. п.B);
+- либо вариант C: `webapp/dist` на Netlify/Vercel (drag-and-drop в браузере), API — отдельно.
+
+**Полезные команды для разработки на Windows**
+```powershell
+# Фронт с hot-reload вне Telegram (dev-initData): http://localhost:5173
+cd webapp; npm run dev
+
+# Проверить, что API отвечает
+Invoke-RestMethod http://localhost:8000/api/state -Headers @{ "X-Init-Data" = "query_id=test&user=%7B%22id%22%3A1%7D&auth_date=1&hash=" }
+
+# Если uvicorn не найден после активации venv:
+py -m uvicorn api:app --reload --port 8000
+```
+
+Примечания:
+- SQLite (`bot.db`) работает на Windows без доп. настроек.
+- В dev-режиме (пустой `BOT_SECRET_KEY`) подпись initData не проверяется — удобно тестировать фронт через `npm run dev`.
+- trycloudflare-URL меняется при каждом запуске cloudflared — после смены не забудьте обновить его в BotFather.
+
 ### API
 | Метод | Путь               | Описание                                   |
 |-------|--------------------|--------------------------------------------|
