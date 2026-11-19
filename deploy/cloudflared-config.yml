@@ -1,0 +1,20 @@
+# Конфиг именованного туннеля Cloudflare для домена amidjob.duckdns.org
+# Использование (Windows PowerShell, из папки проекта):
+#
+#   .\cloudflared.exe tunnel login                      # разово: логин в Cloudflare Zero Trust (бесплатно)
+#   .\cloudflared.exe tunnel create wordcards           # создаёт туннель + C:\Users\<you>\.cloudflared\<TUNNEL_ID>.json
+#   .\cloudflared.exe tunnel route dns wordcards amidjob.duckdns.org
+#         # добавит в DNS-зону duckdns.org запись CNAME amidjob -> <TUNNEL_ID>.cfargotunnel.com
+#         # (для DuckDNS это можно сделать и через их API вместо команды, см. start-tunnel.ps1)
+#   .\cloudflared.exe tunnel run --config deploy\cloudflared-config.yml wordcards
+#
+# После этого https://amidjob.duckdns.org работает ПОСТОЯННО (URL не меняется),
+# пока запущен cloudflared. Его же указываете в BotFather и в .env (MINI_APP_URL).
+
+tunnel: wordcards
+credentials-file: C:\Users\USERNAME\.cloudflared\wordcards.json   # путь замените на свой после tunnel create
+
+ingress:
+  - hostname: amidjob.duckdns.org
+    service: http://localhost:8000        # uvicorn api:app слушает :8000 и сам раздаёт webapp/dist
+  - service: http_status:404              # обязательно: заглушка для всего остального

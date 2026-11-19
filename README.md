@@ -52,11 +52,136 @@ cd webapp && npm run build   # -> webapp/dist (раздать по HTTPS)
 ```
 
 ### Подключение к боту
-1. Хостинг `webapp/dist` по **HTTPS** (требование Telegram).
+1. Хостинг `webapp/dist` по **HTTPS** (требование Telegram). См. подробный разбор ниже.
 2. @BotFather → `/newapp` (или Bot Settings → Menu Button) → указать URL.
 3. В `.env`: `MINI_APP_URL=https://your.domain/`, `BOT_SECRET_KEY=<из BotFather>`
    (нужен для HMAC-проверки initData в `api.py`; без него dev-режим).
 4. Бот сам добавит кнопку «📱 Карточки (Mini App)» в меню и команду `/app`.
+
+### Что значит «раздать webapp/dist по HTTPS»
+
+`npm run build` компилирует React-приложение в статические файлы
+(`webapp/dist/index.html` + `assets/*.js|css`). Их нужно выложить на веб-сервер,
+чтобы Telegram мог открыть их по публичному **https://** адресу внутри WebView.
+Telegram принципиально не открывает Mini App по `http://` или `localhost` —
+поэтому нужен сервер с SSL-сертификатом и доменом. Варианты, от простого к продакшену:
+
+**A. Локальный тест за 1 минуту (cloudflared, без своего сервера)**
+```bash
+cd webapp && npm run build
+python -m http.server --directory dist 8000     # локальная раздача статики
+cloudflared tunnel --url http://localhost:8000  # выдаст https://xxxx.trycloudflare.com
+# этот https-URL указываете в BotFather; API при этом должен быть доступен там же
+```
+
+**B. Один VPS: FastAPI раздаёт и фронт, и API (уже настроено в `api.py`)**
+`api.py` монтирует `webapp/dist` как статику, поэтому достаточно одного процесса:
+```bash
+cd webapp && npm run build          # обновить dist
+uvicorn api:app --host 127.0.0.1 --port 8000
+```
+Перед ним ставится Nginx с TLS — готовый конфиг: `deploy/nginx-wordcards.conf`
+```bash
+sudo apt install nginx certbot python3-certbot-nginx
+sudo cp deploy/nginx-wordcards.conf /etc/nginx/sites-available/wordcards  # + заменить домен
+sudo ln -s /etc/nginx/sites-available/wordcards /etc/nginx/sites-enabled/
+sudo certbot --nginx -d your.domain.com    # бесплатный сертификат Let's Encrypt
+sudo systemctl reload nginx
+```
+Итого: `https://your.domain.com/` → карточки, `https://your.domain.com/api/*` → REST.
+Фронтенд ходит в API по относительному пути (тот же origin), CORS не мешает.
+
+**C. Статический хостинг фронта + API отдельно**
+Загрузить содержимое `webapp/dist` на Netlify / Vercel / GitHub Pages — они дают
+HTTPS из коробки. Тогда в `webapp/src/telegram.ts` укажите `API_BASE` на ваш
+бэкенд и разрешите его origin в CORS в `api.py`.
+
+После любого варианта: BotFather → Your bot → Bot Settings → Menu Button →
+`https://your.domain.com/` — и кнопка «Открыть приложение» появится в чате.
+
+### Запуск на Windows (PowerShell)
+
+**1. Установка зависимостей (один раз)**
+```powershell
+# Python 3.10+ с python.org (при установке отметить "Add python.exe to PATH")
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1        # если скрипты заблокированы:
+# Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+pip install -r requirements.txt
+
+# Node.js LTS с nodejs.org (даёт npm)
+cd webapp
+npm install
+cd ..
+```
+
+**2. Настройка `.env`** (в корне проекта, рядом с main.py):
+```
+TOKEN=123456:AAA...                  # токен бота из @BotFather
+BOT_SECRET_KEY=...                   # BotFather → /webapps → Secret Key (можно пустым для dev)
+MINI_APP_URL=https://xxxx.trycloudflare.com
+```
+
+**3. Сборка фронтенда**
+```powershell
+cd webapp
+npm run build                        # -> webapp/dist
+cd ..
+```
+
+**4. Быстрый способ (туннель cloudflared — HTTPS без сервера)**
+```powershell
+# Скачать cloudflared-windows-amd64.exe с https://github.com/cloudflare/cloudflared/releases
+# и положить, например, в C:\tools\cloudflared.exe (или добавить папку в PATH)
+
+# Терминал 1 — API + фронт одним процессом (api.py сам раздаёт webapp/dist):
+.\.venv\Scripts\Activate.ps1
+uvicorn api:app --host 127.0.0.1 --port 8000
+
+# Терминал 2 — туннель:
+C:\tools\cloudflared.exe tunnel --url http://localhost:8000
+# в логе появится https://xxxx-random-words.trycloudflare.com — это и есть ваш HTTPS-URL
+```
+Этот URL укажите в BotFather (Menu Button → Set Web App URL) и в `.env` (`MINI_APP_URL`),
+после чего перезапустите бота: `python main.py`.
+
+**5. Продакшен-вариант на Windows без Linux**
+Вместо Nginx/certbot можно взять любой PaaS с TLS из коробки:
+- FastAPI деплоится на **Railway / Render / Fly.io** (там же будет раздаваться `webapp/dist`, см. п.B);
+- либо вариант C: `webapp/dist` на Netlify/Vercel (drag-and-drop в браузере), API — отдельно.
+
+**Полезные команды для разработки на Windows**
+```powershell
+# Фронт с hot-reload вне Telegram (dev-initData): http://localhost:5173
+cd webapp; npm run dev
+
+# Проверить, что API отвечает
+Invoke-RestMethod http://localhost:8000/api/state -Headers @{ "X-Init-Data" = "query_id=test&user=%7B%22id%22%3A1%7D&auth_date=1&hash=" }
+
+# Если uvicorn не найден после активации venv:
+py -m uvicorn api:app --reload --port 8000
+```
+
+Примечания:
+- SQLite (`bot.db`) работает на Windows без доп. настроек.
+- В dev-режиме (пустой `BOT_SECRET_KEY`) подпись initData не проверяется — удобно тестировать фронт через `npm run dev`.
+- trycloudflare-URL меняется при каждом запуске cloudflared — после смены не забудьте обновить его в BotFather.
+
+### Постоянный домен amidjob.duckdns.org (Cloudflare Tunnel)
+
+Подробная пошаговая инструкция — в **`deploy/RUN_AMIDJOB.md`**.
+Кратко: Error 1033 означает, что временный trycloudflare-туннель остановлен.
+Для постоянного адреса создайте туннель в Cloudflare Zero Trust Dashboard,
+привяжите hostname `amidjob.duckdns.org` → `http://localhost:8000`, скачайте
+config в `deploy/cloudflared-config.yml` и запускайте так:
+
+```powershell
+# Окно 1: uvicorn api:app --host 127.0.0.1 --port 8000
+# Окно 2: cloudflared tunnel run --config deploy\cloudflared-config.yml <имя-туннеля>
+# URL: https://amidjob.duckdns.org/  -> прописать в BotFather и .env (MINI_APP_URL)
+```
+
+Шаблоны: `deploy/cloudflared-config.yml`, `deploy/start-tunnel.ps1`.
 
 ### API
 | Метод | Путь               | Описание                                   |
