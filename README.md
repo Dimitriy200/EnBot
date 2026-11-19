@@ -167,6 +167,22 @@ py -m uvicorn api:app --reload --port 8000
 - В dev-режиме (пустой `BOT_SECRET_KEY`) подпись initData не проверяется — удобно тестировать фронт через `npm run dev`.
 - trycloudflare-URL меняется при каждом запуске cloudflared — после смены не забудьте обновить его в BotFather.
 
+### Постоянный домен amidjob.duckdns.org (Cloudflare Tunnel)
+
+Подробная пошаговая инструкция — в **`deploy/RUN_AMIDJOB.md`**.
+Кратко: Error 1033 означает, что временный trycloudflare-туннель остановлен.
+Для постоянного адреса создайте туннель в Cloudflare Zero Trust Dashboard,
+привяжите hostname `amidjob.duckdns.org` → `http://localhost:8000`, скачайте
+config в `deploy/cloudflared-config.yml` и запускайте так:
+
+```powershell
+# Окно 1: uvicorn api:app --host 127.0.0.1 --port 8000
+# Окно 2: cloudflared tunnel run --config deploy\cloudflared-config.yml <имя-туннеля>
+# URL: https://amidjob.duckdns.org/  -> прописать в BotFather и .env (MINI_APP_URL)
+```
+
+Шаблоны: `deploy/cloudflared-config.yml`, `deploy/start-tunnel.ps1`.
+
 ### API
 | Метод | Путь               | Описание                                   |
 |-------|--------------------|--------------------------------------------|
